@@ -1,113 +1,72 @@
-`timescale 1s / 1ms
+module traffic_signal_controller(
+    input wire clk,        // Clock signal
+    input wire reset,      // Reset signal
+    input wire x,          // Input to control state transitions
+    output reg [1:0] Hwy,  // Main Highway signal (2-bit: 00=Red, 01=Yellow, 10=Green)
+    output reg [1:0] Cnrty // Cross Road signal (2-bit: 00=Red, 01=Yellow, 10=Green)
+);
 
-`define TRUE 1'b1
-`define FALSE 1'b0
+// State definitions
+parameter S0 = 3'b000; // State 0: Main Highway Green, Cross Road Red
+parameter S1 = 3'b001; // State 1: Main Highway Yellow, Cross Road Red
+parameter S2 = 3'b010; // State 2: Main Highway Red, Cross Road Red
+parameter S3 = 3'b011; // State 3: Main Highway Red, Cross Road Green
+parameter S4 = 3'b100; // State 4: Main Highway Red, Cross Road Yellow
 
-module case_3
- (hwy, cntry, X, clock, clear);
+// Current state and next state variables
+reg [2:0] state, next_state;
 
-output [1:0] hwy, cntry; //2-bit output for 3 states of signal
-reg [2:0] hwy, cntry; //declared output signals are registers
-input X; //if TRUE, indicates that there is car on
-input clock, clear;
-parameter RED = 3'b100,
- YELLOW = 3'b010,
- GREEN = 3'b001;
-parameter S0 = 3'd0,
- S1 = 3'd1,
- S2 = 3'd2,
- S3 = 3'd3,
- S4 = 3'd4;
-
-reg [2:0] state;
-reg [2:0] next_state;
-//state changes only at positive edge of clock
-always @(posedge clock)
- if (clear)
- state <= S0; //Controller starts in S0 state
- else
- state <= next_state; //State change
-always @(state)
-begin
- hwy = GREEN; //Default Light Assignment for Highway light
- cntry = RED; //Default Light Assignment for Country light
- case(state)
- S0: ; // No change, use default
- S1: hwy = YELLOW;
- S2: hwy = RED;
- S3: begin
- hwy = RED;
- cntry = GREEN;
- end
- S4: begin
- hwy = RED;
- cntry = YELLOW;
- end
- endcase
+// State transition logic (combinational)
+always @(*) begin
+    case (state)
+        S0: next_state = (x) ? S1 : S0;  // From S0 to S1 if x = 1
+        S1: next_state = S2;              // From S1 to S2
+        S2: next_state = S3;              // From S2 to S3
+        S3: next_state = (x) ? S3 : S4;  // Stay in S3 if x = 1, else move to S4
+        S4: next_state = S0;              // From S4 to S0
+        default: next_state = S0;         // Default state
+    endcase
 end
-always @(state or X)
-begin
- case (state)
- S0: if(X)
- next_state = S1;
- else
- next_state = S0;
- S1: begin //delay some positive edges of clock
- next_state = S2;
- end
- S2: begin //delay some positive edges of clock
- next_state = S3;
- end
- S3: if(X)
- next_state = S3;
- else
- next_state = S4;
- S4: begin //delay some positive edges of clock
- next_state = S0;
- end
- default: next_state = S0;
- endcase
+
+// Output signal generation (based on state)
+always @(*) begin
+    case (state)
+        S0: begin
+            Hwy = 2'b10;    // Main Highway Green
+            Cnrty = 2'b00;  // Cross Road Red
+        end
+        S1: begin
+            Hwy = 2'b01;    // Main Highway Yellow
+            Cnrty = 2'b00;  // Cross Road Red
+        end
+        S2: begin
+            Hwy = 2'b00;    // Main Highway Red
+            Cnrty = 2'b00;  // Cross Road Red
+        end
+        S3: begin
+            Hwy = 2'b00;    // Main Highway Red
+            Cnrty = 2'b10;  // Cross Road Green
+        end
+        S4: begin
+            Hwy = 2'b00;    // Main Highway Red
+            Cnrty = 2'b01;  // Cross Road Yellow
+        end
+        default: begin
+            Hwy = 2'b00;    // Default: Main Highway Red
+            Cnrty = 2'b00;  // Default: Cross Road Red
+        end
+    endcase
 end
+
+// State update logic (sequential)
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        state <= S0;  // Reset to initial state (S0)
+    end else begin
+        state <= next_state;  // Update state
+    end
+end
+
 endmodule
 
-
-The testbench for the above verilog simulation is as follows: 
-`timescale 1s / 1ms
-
-module TB_HC_trafficController;
-wire [2:0] MAIN_SIG, CNTRY_SIG;
-reg CAR_ON_CNTRY_RD;
-reg CLOCK, CLEAR;
-
-HC_trafficController SC(MAIN_SIG, CNTRY_SIG, CAR_ON_CNTRY_RD, CLOCK, CLEAR);
-
-initial
- $monitor($time, " Main Sig = %b Country Sig = %b Car_on_cntry = %b",
- MAIN_SIG, CNTRY_SIG, CAR_ON_CNTRY_RD);
-
-initial
-begin
- CLOCK = `FALSE;
- forever #5 CLOCK = ~CLOCK;
-end
-
-initial 
-begin
- CLEAR = `TRUE;
- repeat (5) @(negedge CLOCK);
- CLEAR = `FALSE;
-end
-
-initial
-begin
- CAR_ON_CNTRY_RD = `FALSE;
- repeat(20)@(negedge CLOCK); CAR_ON_CNTRY_RD = `TRUE;
- repeat(10)@(negedge CLOCK); CAR_ON_CNTRY_RD = `FALSE;
- repeat(20)@(negedge CLOCK); CAR_ON_CNTRY_RD = `TRUE;
- repeat(10)@(negedge CLOCK); CAR_ON_CNTRY_RD = `FALSE;
- repeat(20)@(negedge CLOCK); CAR_ON_CNTRY_RD = `TRUE;
- repeat(10)@(negedge CLOCK); CAR_ON_CNTRY_RD = `FALSE;
- repeat(10)@(negedge CLOCK); $stop;
-end
-endmodule
 
